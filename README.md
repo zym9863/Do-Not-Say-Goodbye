@@ -1,5 +1,7 @@
 # 不说再见 (Do Not Say Goodbye)
 
+中文版 | [English](README_EN.md)
+
 一个帮助你封存美好回忆，寻找新地平线的应用。
 
 ## 项目简介
