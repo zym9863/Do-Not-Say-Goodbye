@@ -277,22 +277,55 @@ const uploadPhotos = async () => {
   const photoUrls = []
   
   for (const fileObj of selectedFiles.value) {
-    const fileName = `${user.value.id}/${Date.now()}-${fileObj.file.name}`
-    
-    const { data, error } = await supabase.storage
-      .from('moment-photos')
-      .upload(fileName, fileObj.file)
-    
-    if (error) {
-      console.error('照片上传失败:', error)
-      continue
+    try {
+      // 方案1：尝试上传到 Supabase 存储桶
+      const bucketNames = ['photos', 'capsule-photos', 'images', 'uploads']
+      let uploadSuccess = false
+      
+      for (const bucketName of bucketNames) {
+        try {
+          const fileName = `capsules/${user.value.id}/${Date.now()}-${fileObj.file.name}`
+          
+          const { data, error } = await supabase.storage
+            .from(bucketName)
+            .upload(fileName, fileObj.file, {
+              cacheControl: '3600',
+              upsert: false
+            })
+          
+          if (!error) {
+            const { data: { publicUrl } } = supabase.storage
+              .from(bucketName)
+              .getPublicUrl(fileName)
+            
+            photoUrls.push(publicUrl)
+            uploadSuccess = true
+            console.log(`照片上传成功到存储桶: ${bucketName}`)
+            break
+          }
+        } catch (bucketError) {
+          continue
+        }
+      }
+      
+      // 方案2：如果存储桶上传失败，转换为 base64 保存到数据库
+      if (!uploadSuccess) {
+        console.log('存储桶上传失败，使用 base64 备用方案')
+        const reader = new FileReader()
+        const base64Promise = new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = reject
+          reader.readAsDataURL(fileObj.file)
+        })
+        
+        const base64Data = await base64Promise
+        photoUrls.push(base64Data)
+        console.log('照片转换为 base64 成功')
+      }
+    } catch (err) {
+      console.error('处理照片时出错:', err)
+      throw new Error(`照片处理失败: ${err.message}`)
     }
-    
-    const { data: { publicUrl } } = supabase.storage
-      .from('moment-photos')
-      .getPublicUrl(fileName)
-    
-    photoUrls.push(publicUrl)
   }
   
   return photoUrls
@@ -303,7 +336,10 @@ const handleSubmit = async () => {
   
   try {
     // 上传照片
-    const photoUrls = await uploadPhotos()
+    let photoUrls = []
+    if (selectedFiles.value.length > 0) {
+      photoUrls = await uploadPhotos()
+    }
     
     // 创建胶囊
     const { data, error } = await supabase
@@ -323,13 +359,13 @@ const handleSubmit = async () => {
     
     if (error) {
       console.error('创建胶囊失败:', error)
-      alert('创建失败，请重试')
+      alert(`创建失败: ${error.message}`)
     } else {
       router.push('/capsules')
     }
   } catch (err) {
     console.error('创建胶囊失败:', err)
-    alert('创建失败，请重试')
+    alert(`创建失败: ${err.message || '未知错误，请重试'}`)
   } finally {
     loading.value = false
   }

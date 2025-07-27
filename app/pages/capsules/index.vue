@@ -46,6 +46,8 @@
               :src="capsule.photos[0]"
               :alt="capsule.title"
               class="w-full h-full object-cover"
+              @error="handleImageError($event)"
+              loading="lazy"
             />
             <div v-else class="w-full h-full flex items-center justify-center">
               <PhotoIcon class="w-12 h-12 text-gray-400" />
@@ -80,16 +82,21 @@
 
             <!-- 状态和时间 -->
             <div class="flex justify-between items-center text-sm">
-              <span
-                :class="[
-                  'px-2 py-1 rounded-full text-xs',
-                  capsule.is_sealed 
-                    ? 'bg-purple-100 text-purple-600' 
-                    : 'bg-green-100 text-green-600'
-                ]"
-              >
-                {{ capsule.is_sealed ? '已封存' : '开放中' }}
-              </span>
+              <div class="flex items-center space-x-2">
+                <span
+                  :class="[
+                    'px-2 py-1 rounded-full text-xs',
+                    capsule.is_sealed 
+                      ? 'bg-purple-100 text-purple-600' 
+                      : 'bg-green-100 text-green-600'
+                  ]"
+                >
+                  {{ capsule.is_sealed ? '已封存' : '开放中' }}
+                </span>
+                <span v-if="getTimeUntilOpen(capsule)" class="px-2 py-1 bg-orange-100 text-orange-600 rounded-full text-xs">
+                  {{ getTimeUntilOpen(capsule) }}
+                </span>
+              </div>
               <span class="text-gray-500">
                 {{ formatDate(capsule.created_at) }}
               </span>
@@ -117,6 +124,29 @@ const loading = ref(true)
 
 const formatDate = (date) => {
   return dayjs(date).format('YYYY年MM月DD日')
+}
+
+const getTimeUntilOpen = (capsule) => {
+  if (!capsule.is_sealed || !capsule.open_date) return null
+  
+  const now = new Date()
+  const openDate = new Date(capsule.open_date)
+  const diff = openDate.getTime() - now.getTime()
+  
+  if (diff <= 0) return null
+  
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  
+  if (days > 0) return `${days}天后开启`
+  if (hours > 0) return `${hours}小时后开启`
+  return '即将开启'
+}
+
+const handleImageError = (event) => {
+  console.error('图片加载失败:', event.target.src)
+  const parent = event.target.parentNode
+  parent.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400"><div class="text-center"><div class="text-2xl mb-2">📷</div><div class="text-sm">图片加载失败</div></div></div>'
 }
 
 const fetchCapsules = async () => {

@@ -39,6 +39,10 @@
               {{ capsule.is_sealed ? '已封存' : '开放中' }}
             </span>
             
+            <span v-if="timeUntilOpen" class="px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-sm">
+              {{ timeUntilOpen }}后开启
+            </span>
+            
             <button
               v-if="!capsule.is_sealed"
               @click="toggleSeal"
@@ -72,6 +76,8 @@
                 :src="photo"
                 :alt="`照片 ${index + 1}`"
                 class="w-full h-full object-cover"
+                @error="handleImageError($event)"
+                loading="lazy"
               />
             </div>
           </div>
@@ -181,6 +187,7 @@ const capsule = ref(null)
 const loading = ref(true)
 const showPhotoModal = ref(false)
 const currentPhotoIndex = ref(0)
+const autoCheckTimer = ref(null)
 
 const formatDate = (date) => {
   return dayjs(date).format('YYYY年MM月DD日 HH:mm')
@@ -190,6 +197,43 @@ const canOpen = computed(() => {
   if (!capsule.value?.is_sealed || !capsule.value?.open_date) return false
   return new Date() >= new Date(capsule.value.open_date)
 })
+
+const timeUntilOpen = computed(() => {
+  if (!capsule.value?.is_sealed || !capsule.value?.open_date) return null
+  
+  const now = new Date()
+  const openDate = new Date(capsule.value.open_date)
+  const diff = openDate.getTime() - now.getTime()
+  
+  if (diff <= 0) return null
+  
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+  
+  if (days > 0) return `${days}天${hours}小时`
+  if (hours > 0) return `${hours}小时${minutes}分钟`
+  return `${minutes}分钟`
+})
+
+const startAutoCheck = () => {
+  if (capsule.value?.is_sealed && capsule.value?.open_date) {
+    autoCheckTimer.value = setInterval(() => {
+      if (canOpen.value) {
+        clearInterval(autoCheckTimer.value)
+        // 胶囊可以开启了，刷新状态
+        fetchCapsule()
+      }
+    }, 60000) // 每分钟检查一次
+  }
+}
+
+const stopAutoCheck = () => {
+  if (autoCheckTimer.value) {
+    clearInterval(autoCheckTimer.value)
+    autoCheckTimer.value = null
+  }
+}
 
 const fetchCapsule = async () => {
   try {
@@ -204,6 +248,9 @@ const fetchCapsule = async () => {
       console.error('获取胶囊失败:', error)
     } else {
       capsule.value = data
+      // 启动定时检查
+      stopAutoCheck() // 先清除之前的定时器
+      startAutoCheck()
     }
   } catch (err) {
     console.error('获取胶囊失败:', err)
@@ -275,7 +322,21 @@ const nextPhoto = () => {
   }
 }
 
+const handleImageError = (event) => {
+  console.error('图片加载失败:', event.target.src)
+  event.target.style.display = 'none'
+  // 创建一个错误提示元素
+  const errorDiv = document.createElement('div')
+  errorDiv.className = 'w-full h-full flex items-center justify-center text-gray-400'
+  errorDiv.innerHTML = '<div class="text-center"><div class="text-2xl mb-2">📷</div><div class="text-sm">图片加载失败</div></div>'
+  event.target.parentNode.appendChild(errorDiv)
+}
+
 onMounted(() => {
   fetchCapsule()
+})
+
+onUnmounted(() => {
+  stopAutoCheck()
 })
 </script>
